@@ -6,7 +6,7 @@
 
   <maintainer email="foucher@univ-ubs.fr">Alexandre Foucher</maintainer>
 
-  <license>GPL-3.0 license</license>
+  <license>Apache License 2.0</license>
 
   <buildtool_depend>catkin</buildtool_depend>
 

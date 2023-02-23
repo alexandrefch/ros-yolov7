@@ -27,16 +27,16 @@ from yolov7.visualizer import draw_detections
 
 import os
 import time
-from typing import Tuple, Union, Callable
+from typing import Tuple, Callable
 
 import torch
 import cv2
 import numpy as np
 import rospy
 
-from image_transport.ImageTransport import ImageTransport
+import image_transport
 from vision_msgs.msg import Detection2DArray
-from std_msgs.msg import Header
+from sensor_msgs.msg import Image
 
 # ==================================================================================================
 #                                             C O D E
@@ -52,7 +52,7 @@ class YoloV7:
         self.model      = attempt_load(self.configs['weights_path'], self.configs['device'])
         self.model.eval()
 
-        ImageTransport.subscribe(self.configs['img_topic'], self._image_callback, image_type='rgb8')
+        image_transport.Subscriber(self.configs['img_topic'], self._image_callback, image_type='rgb8')
 
         self.pub_detection2D = rospy.Publisher(
             name       = f"{rospy.get_name()}/detection",
@@ -61,7 +61,7 @@ class YoloV7:
         )
 
         if self.configs['visualize']:
-            self.pub_visualize = ImageTransport.advertise(topic_uri=f"{rospy.get_name()}/visualize")
+            self.pub_visualize = image_transport.Publisher(topic_uri=f"{rospy.get_name()}/visualize")
 
         rospy.loginfo(f"[{rospy.get_name()}] Successfully load of the model start inference ...")
 
@@ -133,15 +133,18 @@ class YoloV7:
             if t_sleep > 0:
                 rospy.sleep(t_sleep)
 
-    def _image_callback(self, image: np.ndarray, header:Header):
-        self.img_buffer = (image, header)
+    def _image_callback(self, image: Image):
+        self.img_buffer = image
 
     def _update(self):
-        """ callback function for publisher """
         if self.img_buffer is None:
             return
 
-        np_img_orig, origin_header = self.img_buffer
+        channel = 3
+        height  = self.img_buffer.height
+        width   = self.img_buffer.width
+        buffer  = np.frombuffer(self.img_buffer.data,dtype=np.uint8)
+        np_img_orig   = np.reshape(buffer,(height, width, channel))
 
         # handle possible different img formats
         if len(np_img_orig.shape) == 2:
@@ -166,7 +169,7 @@ class YoloV7:
         detections[:, :4] = detections[:, :4].round()
 
         # publishing
-        detection_msg = create_detection_msg(detections, origin_header)
+        detection_msg = create_detection_msg(detections, self.img_buffer.header)
         self.pub_detection2D.publish(detection_msg)
 
         # visualizing if required
@@ -180,18 +183,29 @@ class YoloV7:
 
         self.img_buffer = None
 
-    def _rescale(self, boxes: Union[torch.Tensor, np.ndarray], ori_shape: Tuple[int, int],
-            target_shape: Tuple[int, int]):
+    def _rescale(self, boxes: torch.Tensor, ori_shape: Tuple[int, int],
+            target_shape: Tuple[int, int]) -> torch.Tensor:
         """
         Rescale the output to the original image shape
-        :param ori_shape: original width and height [width, height].
-        :param boxes: original bounding boxes as a torch.Tensor or np.array or shape
-            [num_boxes, >=4], where the first 4 entries of each element have to be
-            [x1, y1, x2, y2].
-        :param target_shape: target width and height [width, height].
+
+        Parameters
+        ----------
+            boxes : Union[torch.Tensor, np.ndarray]
+                Original bounding boxes as a torch.Tensor or np.array or shape
+                [num_boxes, >=4], where the first 4 entries of each element have to be
+                [x1, y1, x2, y2].
+            ori_shape : Tuple[int, int]
+                Original width and height [width, height].
+            target_shape
+                Target width and height [width, height].
+        Return
+        ------
+            Union[torch.Tensor, np.ndarray]
         """
         xscale = target_shape[1] / ori_shape[1]
         yscale = target_shape[0] / ori_shape[0]
+
+        assert isinstance(boxes,torch.Tensor)
 
         boxes[:, [0, 2]] *= xscale
         boxes[:, [1, 3]] *= yscale
@@ -199,11 +213,21 @@ class YoloV7:
         return boxes
 
     @torch.no_grad()
-    def _inference(self, image: torch.Tensor):
+    def _inference(self, image: torch.Tensor) -> torch.Tensor:
         """
-        :param img: tensor [c, h, w]
-        :returns: tensor of shape [num_boxes, 6], where each item is represented as
-            [x1, y1, x2, y2, confidence, class_id]
+        Parameters
+        ----------
+            image : torch.Tensor
+                Source image
+            ori_shape : Tuple[int, int]
+                Original width and height [width, height].
+            target_shape
+                Target width and height [width, height].
+        Return
+        ------
+            torch.Tensor
+                tensor of shape [num_boxes, 6], where each item is represented as
+                [x1, y1, x2, y2, confidence, class_id]
         """
         image = image.unsqueeze(0)
         pred_results = self.model(image)[0]

@@ -1,11 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(yolov7)
 
-find_package(catkin REQUIRED COMPONENTS
-  rospy
-  std_msgs
-  vision_msgs
-)
+find_package(catkin REQUIRED COMPONENTS rospy)
 
 catkin_python_setup()
 
