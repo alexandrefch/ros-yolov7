@@ -1,23 +1,26 @@
-import rospy
 import torch
 from std_msgs.msg import Header
-from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2DArray, Detection2D, BoundingBox2D, \
     ObjectHypothesisWithPose
 from geometry_msgs.msg import Pose2D
 
 
-def create_detection_msg(detections: torch.Tensor) -> Detection2DArray:
+def create_detection_msg(detections: torch.Tensor, header: Header) -> Detection2DArray:
     """
-    :param detections: torch tensor of shape [num_boxes, 6] where each element is
-        [x1, y1, x2, y2, confidence, class_id]
-    :returns: detections as a ros message of type Detection2DArray
+    Run a loop at specific frequency
+
+    Parameters
+    ----------
+        detections : torch.tensor[num_boxes, 6]
+            Each element is [x1, y1, x2, y2, confidence, class_id]
+        header : std_msgs.msg.Header
+            Image source header to keep origin timestamp
+    Return
+    ------
+        Detection2DArray
     """
     detection_array_msg = Detection2DArray()
 
-    # header
-    header = Header()
-    header.stamp = rospy.Time.now()
     detection_array_msg.header = header
     for detection in detections:
         x1, y1, x2, y2, conf, cls = detection.tolist()
@@ -44,6 +47,8 @@ def create_detection_msg(detections: torch.Tensor) -> Detection2DArray:
         obj_hyp.id = int(cls)
         obj_hyp.score = conf
         single_detection_msg.results = [obj_hyp]
+
+        assert detection_array_msg.detections is not None
 
         detection_array_msg.detections.append(single_detection_msg)
 

@@ -13,9 +13,7 @@ file(GLOB PYTHON_SCRITPS_DIR
 	"src/*.py"
 )
 
-catkin_package(
-	CATKIN_DEPENDS
-)
+catkin_package(	CATKIN_DEPENDS )
 
 catkin_install_python(
 	PROGRAMS ${PYTHON_SCRITPS_DIR}

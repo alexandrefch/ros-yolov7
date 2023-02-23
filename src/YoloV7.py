@@ -36,6 +36,7 @@ import rospy
 
 from image_transport.ImageTransport import ImageTransport
 from vision_msgs.msg import Detection2DArray
+from std_msgs.msg import Header
 
 # ==================================================================================================
 #                                             C O D E
@@ -132,15 +133,15 @@ class YoloV7:
             if t_sleep > 0:
                 rospy.sleep(t_sleep)
 
-    def _image_callback(self, image: np.ndarray):
-        self.img_buffer = image
+    def _image_callback(self, image: np.ndarray, header:Header):
+        self.img_buffer = (image, header)
 
     def _update(self):
         """ callback function for publisher """
         if self.img_buffer is None:
             return
 
-        np_img_orig = self.img_buffer
+        np_img_orig, origin_header = self.img_buffer
 
         # handle possible different img formats
         if len(np_img_orig.shape) == 2:
@@ -165,7 +166,7 @@ class YoloV7:
         detections[:, :4] = detections[:, :4].round()
 
         # publishing
-        detection_msg = create_detection_msg(detections)
+        detection_msg = create_detection_msg(detections, origin_header)
         self.pub_detection2D.publish(detection_msg)
 
         # visualizing if required
@@ -176,7 +177,7 @@ class YoloV7:
             vis_img = draw_detections(np_img_orig, bboxes, classes,
                                       self.class_labels)
             self.pub_visualize.publish(vis_img)
-        
+
         self.img_buffer = None
 
     def _rescale(self, boxes: Union[torch.Tensor, np.ndarray], ori_shape: Tuple[int, int],
